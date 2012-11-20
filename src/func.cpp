@@ -36,7 +36,7 @@ void list(FILE *dev, BootEntry &be, int *fat, unsigned int dirclus, const char *
 	unsigned int clussize = be.BPB_SecPerClus * be.BPB_BytsPerSec, delength = clussize / sizeof(DirEntry);
 	DirEntry *de = new DirEntry[delength];
 	unsigned int i, j, k, startclus;
-	char fname[10], *currdir;
+	char fname[13], *currdir;
 	int fnamelen, pardirlen;
 	for (unsigned int clus = dirclus; clus && !eoc(clus); clus = fat[clus]) {
 /*		for (long tmp = (long) (clus0sec + clus * be.BPB_SecPerClus) * be.BPB_BytsPerSec - 65536; tmp < (long) (clus0sec + clus * be.BPB_SecPerClus) * be.BPB_BytsPerSec + 65535; tmp++) {
@@ -47,11 +47,11 @@ void list(FILE *dev, BootEntry &be, int *fat, unsigned int dirclus, const char *
 		}*/
 		fseek(dev, (long) (clus0sec + clus * be.BPB_SecPerClus - 2) * be.BPB_BytsPerSec, SEEK_SET);
 		fread(de, sizeof(DirEntry), delength, dev);
-		for (i = 0; i < delength && de[i].DIR_Name[0]; i++) {
+		for (i = 0; i < delength; i++) {
 			for (j = 0; j < 8 && de[i].DIR_Name[j] != ' '; j++) {
 				fname[j] = de[i].DIR_Name[j];
 			}
-			if (de[i].DIR_Name[0] != 0xe5 && de[i].DIR_Attr != 0x0f) {
+			if (de[i].DIR_Name[0] != 0 && de[i].DIR_Name[0] != 0xe5 && de[i].DIR_Attr != 0x0f) {
 				startclus = ((unsigned int) de[i].DIR_FstClusHI << 16) + de[i].DIR_FstClusLO;
 				if (de[i].DIR_Attr & 0b00010000) {
 					if (fname[0] != '.') {
@@ -71,7 +71,7 @@ void list(FILE *dev, BootEntry &be, int *fat, unsigned int dirclus, const char *
 				} else {
 					if (de[i].DIR_Name[8] != ' ') {
 						fname[j++] = '.';
-						for (k = 8; k <= 10; k++, j++) {
+						for (k = 8; k <= 10 && de[i].DIR_Name[k] != ' '; k++, j++) {
 							fname[j] = de[i].DIR_Name[k];
 						}
 					}
