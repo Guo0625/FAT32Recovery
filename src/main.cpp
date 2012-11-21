@@ -15,7 +15,7 @@ int main(int argc, char **argv) {
 	}
 	FILE *dev;
 	BootEntry be;
-	if ((dev = fopen(argv[2], "r")) == NULL) {
+	if ((dev = fopen(argv[2], "r+")) == NULL) {
 		perror(argv[2]);
 		return 1;
 	}
@@ -24,16 +24,20 @@ int main(int argc, char **argv) {
 		info(be);
 		return 0;
 	}
-	int fatsize = be.BPB_FATSz32 * be.BPB_BytsPerSec / 4, *fat = new int[fatsize];
+	unsigned int fatsize = be.BPB_FATSz32 * be.BPB_BytsPerSec / 4, *fat = new unsigned int[fatsize];
 	fseek(dev, (long) be.BPB_RsvdSecCnt * be.BPB_BytsPerSec, SEEK_SET);
-	fread(fat, sizeof(int), fatsize, dev);
-/*	for (int i = 0; i < 10; i++) {
+	fread(fat, 4, fatsize, dev);
+	for (int i = 0; i < 30; i++) {
 		printf("%d: %x\n", i, fat[i]);
-	}*/
+	}
 	if (strcmp(argv[3], "-l") == 0) {
 		int ind = 1;
 		list(dev, be, fat, be.BPB_RootClus, "", ind);
 		return 0;
+	}
+	if (strcmp(argv[3], "-r") == 0) {
+		touppercase(argv[4]);
+		recover(dev, be, fat, be.BPB_RootClus, "/", argv[4]);
 	}
 	return 0;
 }

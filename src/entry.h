@@ -43,6 +43,7 @@ struct BootEntry {
 										file system */
 	unsigned char BS_FilSysType[8];	/* File system type label in ASCII */
 };
+
 struct DirEntry {
 	unsigned char DIR_Name[11];		/* File name */
 	unsigned char DIR_Attr;			/* File attributes */
