@@ -31,7 +31,7 @@ static bool eoc(unsigned int clus) {
 	return clus >= EOC_LO && clus <= EOC_HI;
 }
 
-int parsefname(char *fname, const unsigned char *DIR_Name) {
+int parsefname(char fname[13], const unsigned char DIR_Name[11]) {
 	int i, j;
 	for (i = 0; i < 8 && DIR_Name[i] != ' '; i++) {
 		fname[i] = DIR_Name[i];
@@ -52,9 +52,9 @@ void list(FILE *dev, BootEntry &be, unsigned int *fat, unsigned int dirclus, con
 	DirEntry *de = new DirEntry[delength];
 	unsigned int i, startclus;
 	int fnamelen, pardirlen = strlen(pardir);
-	char fname[13], *currdir = (char *) malloc(pardirlen + 10);
+	char fname[13], *currdir = new char[pardirlen + 10];
 	memcpy(currdir, pardir, pardirlen);
-	for (unsigned int clus = dirclus; clus && !eoc(clus); clus = fat[clus]) {
+	for (unsigned int clus = dirclus; clus && !eoc(clus); clus = fat[clus] & 0x0fffffff) {
 		/*		for (long tmp = (long) (clus0sec + clus * be.BPB_SecPerClus) * be.BPB_BytsPerSec - 65536; tmp < (long) (clus0sec + clus * be.BPB_SecPerClus) * be.BPB_BytsPerSec + 65535; tmp++) {
 					fseek(dev, tmp, SEEK_SET);
 					fread(de, sizeof(DirEntry), 1, dev);
@@ -73,8 +73,8 @@ void list(FILE *dev, BootEntry &be, unsigned int *fat, unsigned int dirclus, con
 				if (de[i].DIR_Attr & 0b00010000) {
 					if (fname[0] != '.') {
 						fname[fnamelen++] = '/';
+						fname[fnamelen] = 0;
 					}
-					fname[fnamelen] = 0;
 					printf("%d, %s%s, %u, %u\n", ind++, pardir, fname, de[i].DIR_FileSize, startclus);
 					if (fname[0] != '.') {
 						memcpy(currdir + pardirlen, fname, fnamelen + 1);
@@ -93,7 +93,8 @@ void list(FILE *dev, BootEntry &be, unsigned int *fat, unsigned int dirclus, con
 			}
 		}
 	}
-	free(currdir);
+	delete[] de;
+	delete[] currdir;
 }
 
 void touppercase(char *str) {
@@ -110,9 +111,9 @@ bool recover(FILE *dev, BootEntry &be, unsigned int *fat, unsigned int dirclus, 
 	DirEntry *de = new DirEntry[delength];
 	unsigned int i, j, startclus, totalclus;
 	int fnamelen, pardirlen = strlen(pardir);
-	char *currdir = (char *) malloc(pardirlen + 10), fname[13];
+	char *currdir = new char[pardirlen + 10], fname[13];
 	memcpy(currdir, pardir, pardirlen);
-	for (unsigned int clus = dirclus; clus && !eoc(clus); clus = fat[clus]) {
+	for (unsigned int clus = dirclus; clus && !eoc(clus); clus = fat[clus] & 0x0fffffff) {
 		fseek(dev, (long) (clus0sec + (clus - 2) * be.BPB_SecPerClus) * be.BPB_BytsPerSec, SEEK_SET);
 		fread(de, sizeof (DirEntry), delength, dev);
 		for (i = 0; i < delength; i++) {
@@ -126,14 +127,16 @@ bool recover(FILE *dev, BootEntry &be, unsigned int *fat, unsigned int dirclus, 
 						fwrite(tarname, 1, 1, dev);
 						if (!de[i].DIR_FileSize) {
 							printf("%s: recovered in %s\n", tarname, pardir);
-							free(currdir);
+							delete[] de;
+							delete[] currdir;
 							return true;
 						}
 						totalclus = (de[i].DIR_FileSize - 1) / clussize + 1;
 						for (j = startclus; j - startclus < totalclus; j++) {
-							if (fat[j]) {
+							if (fat[j] & 0x0fffffff) {
 								printf("%s: error - fail to recover\n", tarname);
-								free(currdir);
+								delete[] de;
+								delete[] currdir;
 								return false;
 							}
 						}
@@ -144,7 +147,8 @@ bool recover(FILE *dev, BootEntry &be, unsigned int *fat, unsigned int dirclus, 
 						fseek(dev, (long) be.BPB_RsvdSecCnt * be.BPB_BytsPerSec + startclus * clussize, SEEK_SET);
 						fwrite(fat + startclus, 4, totalclus, dev);
 						printf("%s: recovered in %s\n", tarname, currdir);
-						free(currdir);
+						delete[] de;
+						delete[] currdir;
 						return true;
 					}
 				} else if (de[i].DIR_Attr & 0b00010000) {
@@ -155,7 +159,8 @@ bool recover(FILE *dev, BootEntry &be, unsigned int *fat, unsigned int dirclus, 
 						fname[fnamelen] = 0;
 						memcpy(currdir + pardirlen, fname, fnamelen + 1);
 						if (recover(dev, be, fat, startclus, currdir, tarname)) {
-							free(currdir);
+							delete[] de;
+							delete[] currdir;
 							return true;
 						}
 					}
@@ -166,7 +171,8 @@ bool recover(FILE *dev, BootEntry &be, unsigned int *fat, unsigned int dirclus, 
 	if (dirclus == be.BPB_RootClus) {
 		printf("%s: error - file not found\n", tarname);
 	}
-	free(currdir);
+	delete[] de;
+	delete[] currdir;
 	return false;
 }
 
