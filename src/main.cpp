@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
 	fseek(dev, (long) be.BPB_RsvdSecCnt * be.BPB_BytsPerSec, SEEK_SET);
 	fread(fat, 4, fatsize, dev);
 	for (int i = 0; i < 30; i++) {
-		printf("%d: %x\n", i, fat[i]);
+		printf("%d: 0x%x (%d)\n", i, fat[i], fat[i]);
 	}
 	if (strcmp(argv[3], "-l") == 0) {
 		int ind = 1;
