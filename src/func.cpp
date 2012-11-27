@@ -26,11 +26,6 @@ void info(BootEntry &be) {
 	printf("Number of reserved sectors = %hu\n", be.BPB_RsvdSecCnt);
 }
 
-static bool eoc(unsigned int clus) {
-	clus &= 0x0fffffff;
-	return clus >= EOC_LO && clus <= EOC_HI;
-}
-
 int parsefname(char fname[13], const unsigned char DIR_Name[11]) {
 	int i, j;
 	for (i = 0; i < 8 && DIR_Name[i] != ' '; i++) {
@@ -47,14 +42,15 @@ int parsefname(char fname[13], const unsigned char DIR_Name[11]) {
 }
 
 void list(FILE *dev, BootEntry &be, unsigned int *fat, unsigned int dirclus, const char *pardir, int &ind) {
-	unsigned int clus0sec = be.BPB_RsvdSecCnt + (be.BPB_FATSz16 + be.BPB_FATSz32) * be.BPB_NumFATs - 2 * be.BPB_SecPerClus;
+	unsigned int fatsize = be.BPB_FATSz16 + be.BPB_FATSz32;
+	unsigned int clus0sec = be.BPB_RsvdSecCnt + fatsize * be.BPB_NumFATs - 2 * be.BPB_SecPerClus;
 	unsigned int clussize = be.BPB_SecPerClus * be.BPB_BytsPerSec, delength = clussize / sizeof (DirEntry);
 	DirEntry *de = new DirEntry[delength];
 	unsigned int i, startclus;
 	int fnamelen, pardirlen = strlen(pardir);
 	char fname[13], *currdir = new char[pardirlen + 10];
 	memcpy(currdir, pardir, pardirlen);
-	for (unsigned int clus = dirclus; clus && !eoc(clus); clus = fat[clus] & 0x0fffffff) {
+	for (unsigned int clus = dirclus & 0x0fffffff; clus && clus < EOC_LO; clus = fat[clus] & 0x0fffffff) {
 		/*		for (long tmp = (long) (clus0sec + clus * be.BPB_SecPerClus) * be.BPB_BytsPerSec - 65536; tmp < (long) (clus0sec + clus * be.BPB_SecPerClus) * be.BPB_BytsPerSec + 65535; tmp++) {
 					fseek(dev, tmp, SEEK_SET);
 					fread(de, sizeof(DirEntry), 1, dev);
@@ -65,7 +61,7 @@ void list(FILE *dev, BootEntry &be, unsigned int *fat, unsigned int dirclus, con
 		fread(de, sizeof (DirEntry), delength, dev);
 		for (i = 0; i < delength; i++) {
 			if (de[i].DIR_Name[0] != 0 && de[i].DIR_Name[0] != 0xe5 && de[i].DIR_Attr != 0x0f) {
-				startclus = ((unsigned int) de[i].DIR_FstClusHI << 16) + de[i].DIR_FstClusLO;
+				startclus = (((unsigned int) de[i].DIR_FstClusHI << 16) + de[i].DIR_FstClusLO) & 0x0fffffff;
 				/*				for (j = 0; j < 8 && de[i].DIR_Name[j] != ' '; j++) {
 									fname[j] = de[i].DIR_Name[j];
 								}*/
@@ -106,21 +102,22 @@ void touppercase(char *str) {
 }
 
 bool recover(FILE *dev, BootEntry &be, unsigned int *fat, unsigned int dirclus, const char *pardir, char *tarname) {
-	unsigned int clus0sec = be.BPB_RsvdSecCnt + (be.BPB_FATSz16 + be.BPB_FATSz32) * be.BPB_NumFATs - 2 * be.BPB_SecPerClus;
+	unsigned int fatsize = be.BPB_FATSz16 + be.BPB_FATSz32;
+	unsigned int clus0sec = be.BPB_RsvdSecCnt + fatsize * be.BPB_NumFATs - 2 * be.BPB_SecPerClus;
 	unsigned int clussize = be.BPB_SecPerClus * be.BPB_BytsPerSec, delength = clussize / sizeof (DirEntry);
 	DirEntry *de = new DirEntry[delength];
 	unsigned int i, j, startclus, totalclus;
 	int fnamelen, pardirlen = strlen(pardir);
 	char *currdir = new char[pardirlen + 10], fname[13];
 	memcpy(currdir, pardir, pardirlen);
-	for (unsigned int clus = dirclus; clus && !eoc(clus); clus = fat[clus] & 0x0fffffff) {
+	for (unsigned int clus = dirclus & 0x0fffffff; clus && clus < EOC_LO; clus = fat[clus] & 0x0fffffff) {
 		fseek(dev, (long) (clus0sec + clus * be.BPB_SecPerClus) * be.BPB_BytsPerSec, SEEK_SET);
 		fread(de, sizeof (DirEntry), delength, dev);
 		for (i = 0; i < delength; i++) {
 			if (de[i].DIR_Name[0] != 0 && de[i].DIR_Attr != 0x0f) {
 				if (de[i].DIR_Name[0] == 0xe5) {
 					printf("%11s\n", de[i].DIR_Name);
-					startclus = ((unsigned int) de[i].DIR_FstClusHI << 16) + de[i].DIR_FstClusLO;
+					startclus = (((unsigned int) de[i].DIR_FstClusHI << 16) + de[i].DIR_FstClusLO) & 0x0fffffff;
 					fnamelen = parsefname(fname, de[i].DIR_Name);
 					if (strcmp(fname + 1, tarname + 1) == 0) {
 						fseek(dev, (long) (clus0sec + clus * be.BPB_SecPerClus) * be.BPB_BytsPerSec + i * sizeof (DirEntry), SEEK_SET);
@@ -141,18 +138,20 @@ bool recover(FILE *dev, BootEntry &be, unsigned int *fat, unsigned int dirclus, 
 							}
 						}
 						for (j = startclus; j - startclus < totalclus - 1; j++) {
-							fat[j] = j + 1;
+							fat[j] = (j + 1) | (fat[j] & 0xf0000000);
 						}
-						fat[j] = EOC_HI;
-						fseek(dev, (long) be.BPB_RsvdSecCnt * be.BPB_BytsPerSec + startclus * 4, SEEK_SET);
-						fwrite(fat + startclus, 4, totalclus, dev);
-						printf("%s: recovered in %s\n", tarname, currdir);
+						fat[j] = EOC_HI | (fat[j] & 0xf0000000);
+						for (j = 0; j < be.BPB_NumFATs; j++) {
+							fseek(dev, (be.BPB_RsvdSecCnt + j * (long) fatsize) * be.BPB_BytsPerSec + startclus * 4, SEEK_SET);
+							fwrite(fat + startclus, 4, totalclus, dev);
+						}
+						printf("%s: recovered in %s\n", tarname, pardir);
 						delete[] de;
 						delete[] currdir;
 						return true;
 					}
 				} else if (de[i].DIR_Attr & 0b00010000) {
-					startclus = ((unsigned int) de[i].DIR_FstClusHI << 16) + de[i].DIR_FstClusLO;
+					startclus = (((unsigned int) de[i].DIR_FstClusHI << 16) + de[i].DIR_FstClusLO) & 0x0fffffff;
 					fnamelen = parsefname(fname, de[i].DIR_Name);
 					if (fname[0] != '.') {
 						fname[fnamelen++] = '/';
