@@ -3,20 +3,53 @@
 #include <cstring>
 #include "entry.h"
 
-bool checkargs(int argc, char **argv) {
+char *devname, *recfname;
+
+char checkargs(int argc, char **argv) {
 	if (argc < 4) {
-		return false;
+		devname = recfname = NULL;
+		return 0;
 	}
-	if (strcmp(argv[1], "-d") == 0) {
-		if (argc == 4 && (strcmp(argv[3], "-i") == 0 || strcmp(argv[3], "-l") == 0)) {
-			return true;
+	bool d, i, l, r;
+	d = i = l = r = false;
+	for (int j = 1; j < argc; j++) {
+		if (!d && strcmp(argv[j], "-d") == 0) {
+			if (++j >= argc) {
+				devname = recfname = NULL;
+				return 0;
+			}
+			d = true;
+			devname = argv[j];
+		} else if (!i && strcmp(argv[j], "-i") == 0) {
+			i = true;
+		} else if (!l && strcmp(argv[j], "-l") == 0) {
+			l = true;
+		} else if (!r && strcmp(argv[j], "-r") == 0) {
+			if (++j >= argc) {
+				devname = recfname = NULL;
+				return 0;
+			}
+			r = true;
+			recfname = argv[j];
+		} else {
+			devname = recfname = NULL;
+			return 0;
 		}
-		if (argc == 5 && strcmp(argv[3], "-r") == 0) {
-			return true;
-		}
-		return false;
 	}
-	return false;
+	if (!d || (i && l) || (i && r) || (l && r)) {
+		devname = recfname = NULL;
+		return 0;
+	}
+	if (i) {
+		return 'i';
+	}
+	if (l) {
+		return 'l';
+	}
+	if (r) {
+		return 'r';
+	}
+	return 0;
 }
 
 void info(BootEntry &be) {
@@ -65,6 +98,7 @@ void list(FILE *dev, BootEntry &be, unsigned int *fat, unsigned int dirclus, con
 				/*				for (j = 0; j < 8 && de[i].DIR_Name[j] != ' '; j++) {
 									fname[j] = de[i].DIR_Name[j];
 								}*/
+//				printf("%11s\n", de[i].DIR_Name);
 				fnamelen = parsefname(fname, de[i].DIR_Name);
 				if (de[i].DIR_Attr & 0b00010000) {
 					if (fname[0] != '.') {
@@ -116,7 +150,7 @@ bool recover(FILE *dev, BootEntry &be, unsigned int *fat, unsigned int dirclus, 
 		for (i = 0; i < delength; i++) {
 			if (de[i].DIR_Name[0] != 0 && de[i].DIR_Attr != 0x0f) {
 				if (de[i].DIR_Name[0] == 0xe5) {
-					printf("%11s\n", de[i].DIR_Name);
+//					printf("%11s\n", de[i].DIR_Name);
 					startclus = (((unsigned int) de[i].DIR_FstClusHI << 16) + de[i].DIR_FstClusLO) & 0x0fffffff;
 					fnamelen = parsefname(fname, de[i].DIR_Name);
 					if (strcmp(fname + 1, tarname + 1) == 0) {

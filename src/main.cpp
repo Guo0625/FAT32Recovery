@@ -5,8 +5,11 @@
 
 using namespace std;
 
+extern char *devname, *recfname;
+
 int main(int argc, char **argv) {
-	if (!checkargs(argc, argv)) {
+	char op;
+	if (!(op = checkargs(argc, argv))) {
 		printf("Usage: %s -d [device filename] [other arguments]\n", argv[0]);
 		puts("-i                    Print boot sector information");
 		puts("-l                    List all the directory entries");
@@ -15,30 +18,32 @@ int main(int argc, char **argv) {
 	}
 	FILE *dev;
 	BootEntry be;
-	if ((dev = fopen(argv[2], "r+")) == NULL) {
-		perror(argv[2]);
+	if ((dev = fopen(devname, "r+")) == NULL) {
+		perror(devname);
 		return 1;
 	}
 	fread(&be, sizeof(BootEntry), 1, dev);
-	if (strcmp(argv[3], "-i") == 0) {
+	if (op == 'i') {
 		info(be);
 		return 0;
 	}
 	unsigned int fatsize = (be.BPB_FATSz16 + be.BPB_FATSz32) * be.BPB_BytsPerSec / 4, *fat = new unsigned int[fatsize];
 	fseek(dev, (long) be.BPB_RsvdSecCnt * be.BPB_BytsPerSec, SEEK_SET);
 	fread(fat, 4, fatsize, dev);
-	for (int i = 0; i < 30; i++) {
+/*	for (int i = 0; i < 30; i++) {
 		printf("%d: 0x%x (%d)\n", i, fat[i], fat[i]);
-	}
-	if (strcmp(argv[3], "-l") == 0) {
+	}*/
+	if (op == 'l') {
 		int ind = 1;
 		list(dev, be, fat, be.BPB_RootClus, "", ind);
 		delete[] fat;
 		return 0;
 	}
-	if (strcmp(argv[3], "-r") == 0) {
-		touppercase(argv[4]);
-		recover(dev, be, fat, be.BPB_RootClus, "/", argv[4]);
+	if (op == 'r') {
+		touppercase(recfname);
+		recover(dev, be, fat, be.BPB_RootClus, "/", recfname);
+		delete[] fat;
+		return 0;
 	}
 	delete[] fat;
 	return 0;
